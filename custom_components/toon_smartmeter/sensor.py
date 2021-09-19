@@ -59,6 +59,8 @@ SENSOR_LIST = {
     "elecsolar",
     "elecsolarcnt",
     "heat",
+    "waterflow",
+    "waterusedcnt",
 }
 
 SENSOR_TYPES: Final[tuple[SensorEntityDescription, ...]] = (
@@ -172,6 +174,19 @@ SENSOR_TYPES: Final[tuple[SensorEntityDescription, ...]] = (
         key="heat",
         name="P1 Heat",
         icon="mdi:fire",
+    ),
+    SensorEntityDescription(
+        key="waterflow",
+        name="Actual water usage",
+        icon="mdi:water-pump",
+        native_unit_of_measurement="L/min",
+    ),
+    SensorEntityDescription(
+        key="waterusedcnt",
+        name="Water used",
+        icon="mdi:water",
+        native_unit_of_measurement=VOLUME_CUBIC_METERS,
+        state_class=STATE_CLASS_TOTAL_INCREASING,
     ),
 )
 
@@ -296,251 +311,81 @@ class ToonSmartMeterSensor(SensorEntity):
 
         if not energy:
             return
-
-        if self._discovery == False:
-            for key in energy:
-                dev = energy[key]
-
-                """gas verbruik"""
-                if (
-                    dev["type"] in ["gas", "HAE_METER_v2_1", "HAE_METER_v3_1"]
-                    and safe_get(energy, [key, "CurrentGasQuantity"], default="NaN")
-                    != "NaN"
-                ):
-                    self._dev_id["gasused"] = key
-                    self._dev_id["gasusedcnt"] = key
-
-                """elec verbruik laag"""
-                if (
-                    dev["type"]
-                    in [
-                        "elec_delivered_lt",
-                        "HAE_METER_v2_5",
-                        "HAE_METER_v3_6",
-                        "HAE_METER_v3_5",
-                    ]
-                    and safe_get(
-                        energy, [key, "CurrentElectricityQuantity"], default="NaN"
-                    )
-                    != "NaN"
-                ):
-                    self._dev_id["elecusageflowlow"] = key
-                    self._dev_id["elecusagecntlow"] = key
-
-                """elec verbruik hoog/normaal"""
-                if (
-                    dev["type"]
-                    in [
-                        "elec_delivered_nt",
-                        "HAE_METER_v2_3",
-                        "HAE_METER_v3_3",
-                        "HAE_METER_v3_4",
-                    ]
-                    and safe_get(
-                        energy, [key, "CurrentElectricityQuantity"], default="NaN"
-                    )
-                    != "NaN"
-                ):
-                    self._dev_id["elecusageflowhigh"] = key
-                    self._dev_id["elecusagecnthigh"] = key
-
-                """elec teruglevering laag"""
-                if (
-                    dev["type"]
-                    in ["elec_received_lt", "HAE_METER_v2_6", "HAE_METER_v3_7"]
-                    and safe_get(
-                        energy, [key, "CurrentElectricityQuantity"], default="NaN"
-                    )
-                    != "NaN"
-                ):
-                    self._dev_id["elecprodflowlow"] = key
-                    self._dev_id["elecprodcntlow"] = key
-
-                """elec teruglevering hoog/normaal"""
-                if (
-                    dev["type"]
-                    in ["elec_received_nt", "HAE_METER_v2_4", "HAE_METER_v3_5"]
-                    and safe_get(
-                        energy, [key, "CurrentElectricityQuantity"], default="NaN"
-                    )
-                    != "NaN"
-                ):
-                    self._dev_id["elecprodflowhigh"] = key
-                    self._dev_id["elecprodcnthigh"] = key
-
-            self._discovery = True
-            _LOGGER.debug("Discovered: '%s'", self._dev_id)
-
+        
+        p1_device = "dev_15"
+        water_device = "dev_27"
+        solar_device = "dev_20.export"
+        
             """gas verbruik laatste uur"""
         if self._type == "gasused":
-            if self._type in self._dev_id:
-                self._state = (
-                    float(energy[self._dev_id[self._type]]["CurrentGasFlow"]) / 1000
-                )
+            self._state = float(energy[p1_device + ".1"]["CurrentGasFlow"]) / 1000
 
             """gas verbruik teller laatste uur"""
         elif self._type == "gasusedcnt":
-            if self._type in self._dev_id:
-                self._state = (
-                    float(energy[self._dev_id[self._type]]["CurrentGasQuantity"]) / 1000
-                )
-
+            self._state = float(energy[p1_device + ".1"]["CurrentGasQuantity"]) / 1000
+            
             """elec verbruik puls"""
         elif self._type == "elecusageflowpulse":
-            if "dev_3.2" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_3.2"]["CurrentElectricityFlow"]
-                )
-            elif "dev_2.2" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_2.2"]["CurrentElectricityFlow"]
-                )
-            elif "dev_4.2" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_4.2"]["CurrentElectricityFlow"]
-                )
-            elif "dev_7.2" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_7.2"]["CurrentElectricityFlow"]
-                )
+            self._state = energy[p1_device + ".2"]["CurrentElectricityFlow"]
 
             """elec verbruik teller puls"""
         elif self._type == "elecusagecntpulse":
-            if "dev_3.2" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_3.2"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_2.2" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_2.2"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_4.2" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_4.2"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_7.2" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_7.2"]["CurrentElectricityQuantity"]) / 1000
-                )
-
+            self._state = float(energy[p1_device + ".2"]["CurrentElectricityQuantity"]) / 1000
+            
             """elec verbruik laag"""
         elif self._type == "elecusageflowlow":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    energy[self._dev_id[self._type]]["CurrentElectricityFlow"]
-                )
-
+            self._state = energy[p1_device + ".6"]["CurrentElectricityFlow"]
+            
             """elec verbruik teller laag"""
         elif self._type == "elecusagecntlow":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    float(
-                        energy[self._dev_id[self._type]]["CurrentElectricityQuantity"]
-                    )
-                    / 1000
-                )
+            self._state = float(energy[p1_device + ".6"]["CurrentElectricityQuantity"] ) / 1000
 
             """elec verbruik hoog/normaal"""
         elif self._type == "elecusageflowhigh":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    energy[self._dev_id[self._type]]["CurrentElectricityFlow"]
-                )
+            self._state = energy[p1_device + ".4"]["CurrentElectricityFlow"]
 
             """elec verbruik teller hoog/normaal"""
         elif self._type == "elecusagecnthigh":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    float(
-                        energy[self._dev_id[self._type]]["CurrentElectricityQuantity"]
-                    )
-                    / 1000
-                )
+            self._state = float(energy[p1_device + ".4"]["CurrentElectricityQuantity"]) / 1000
 
             """elec teruglever laag"""
         elif self._type == "elecprodflowlow":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    energy[self._dev_id[self._type]]["CurrentElectricityFlow"]
-                )
+            self._state = energy[p1_device + ".7"]["CurrentElectricityFlow"]
 
             """elec teruglever teller laag"""
         elif self._type == "elecprodcntlow":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    float(
-                        energy[self._dev_id[self._type]]["CurrentElectricityQuantity"]
-                    )
-                    / 1000
-                )
+            self._state = float(energy[p1_device + ".7"]["CurrentElectricityQuantity"]) / 1000
 
             """elec teruglever hoog/normaal"""
         elif self._type == "elecprodflowhigh":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    energy[self._dev_id[self._type]]["CurrentElectricityFlow"]
-                )
-
+            self._state = energy[p1_device + ".5"]["CurrentElectricityFlow"]
+ 
             """elec teruglever teller hoog/normaal"""
         elif self._type == "elecprodcnthigh":
-            if self._type in self._dev_id:
-                self._state = self._validateOutput(
-                    float(
-                        energy[self._dev_id[self._type]]["CurrentElectricityQuantity"]
-                    )
-                    / 1000
-                )
+            self._state = float(energy[p1_device + ".5"]["CurrentElectricityQuantity"]) / 1000
 
             """zon op toon"""
         elif self._type == "elecsolar":
-            if "dev_3.export" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_3.export"]["CurrentElectricityFlow"]
-                )
-            elif "dev_2.3" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_2.3"]["CurrentElectricityFlow"]
-                )
-            elif "dev_3.3" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_3.3"]["CurrentElectricityFlow"]
-                )
-            elif "dev_4.3" in energy:
-                self._state = self._validateOutput(
-                    energy["dev_4.3"]["CurrentElectricityFlow"]
-                )
+            self._state = energy[solar_device]["CurrentElectricityFlow"]
 
             """zon op toon teller"""
         elif self._type == "elecsolarcnt":
-            if "dev_3.export" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_3.export"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_2.3" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_2.3"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_3.3" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_3.3"]["CurrentElectricityQuantity"]) / 1000
-                )
-            elif "dev_4.3" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_4.3"]["CurrentElectricityQuantity"]) / 1000
-                )
+            self._state = float(energy[solar_device]["CurrentElectricityQuantity"]) / 1000
 
+            """heat"""
         elif self._type == "heat":
-            if "dev_2.8" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_2.8"]["CurrentHeatQuantity"]) / 1000
-                )
-            elif "dev_4.8" in energy:
-                self._state = self._validateOutput(
-                    float(energy["dev_4.8"]["CurrentHeatQuantity"]) / 1000
-                )
+            self._state = float(energy[p1_device + ".8"]["CurrentHeatQuantity"]) / 1000
 
+            """water op toon"""
+        elif self._type == 'waterflow':
+            self._state = round((float(energy[water_device + ".9"]["CurrentWaterFlow"])/60), 1)
+
+            """water op toon teller"""
+        elif self._type == 'waterusedcnt':
+            self._state = float(energy[water_device + ".9"]["CurrentWaterQuantity"])/1000
+        
+            
         _LOGGER.debug("Device: {} State: {}".format(self._type, self._state))
-
 
 def safe_get(_dict, keys, default=None):
     def _reducer(d, key):
