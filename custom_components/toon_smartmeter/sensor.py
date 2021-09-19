@@ -316,7 +316,7 @@ class ToonSmartMeterSensor(SensorEntity):
         water_device = "dev_27"
         solar_device = "dev_20.export"
         
-            """gas verbruik laatste uur"""
+        """gas verbruik laatste uur"""
         if self._type == "gasused":
             self._state = float(energy[p1_device + ".1"]["CurrentGasFlow"]) / 1000
 
